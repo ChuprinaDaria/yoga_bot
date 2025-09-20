@@ -1,0 +1,24 @@
+# YogaX Bot - Залежності
+
+# Aiogram v3
+aiogram==3.4.1
+
+# Планувальник задач
+apscheduler==3.10.4
+
+# Змінні середовища
+python-dotenv==1.0.0
+
+# База даних
+SQLAlchemy==2.0.23
+alembic==1.13.1
+
+# Логування (вбудовано в Python)
+# logging
+
+# Додаткові залежності (за потреби)
+# requests==2.31.0
+# aiohttp==3.9.1
+# sqlite3 (вбудовано в Python)
+# json (вбудовано в Python)
+# datetime (вбудовано в Python)

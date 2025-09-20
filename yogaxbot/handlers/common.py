@@ -1,0 +1,75 @@
+import os
+import logging
+from aiogram import Bot
+from aiogram.enums import ParseMode
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.fsm.state import State, StatesGroup
+from db import SessionLocal, User, DISCOUNT_DEEP_LINK
+from datetime import datetime
+
+logger = logging.getLogger(__name__)
+
+def get_main_reply_keyboard():
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text='🧘‍♀️ Безкоштовний курс')],
+            [KeyboardButton(text='💬 Чат школи йоги')],
+            [KeyboardButton(text='Написати тренеру')]
+        ],
+        resize_keyboard=True,
+        is_persistent=True
+    )
+
+def menu_text(user_id: int) -> str:
+    session = SessionLocal()
+    try:
+        user = session.query(User).get(user_id)
+        status = user.status if user else 'new'
+        days_left = ''
+        if user and user.trial_expires_at:
+            delta = (user.trial_expires_at - datetime.utcnow()).days
+            if delta >= 0:
+                days_left = f' (Залишилось днів: {delta})'
+        return f'Ваш статус: <b>{status}</b>{days_left}'
+    finally:
+        session.close()
+
+class AdminStates(StatesGroup):
+    settext = State()
+    await_workout = State()
+    await_broadcast_text = State()
+    await_broadcast_photo = State()
+    await_workout_photo = State()
+    await_workout_caption = State()
+    await_workout_url = State()
+
+# Admin helpers
+_DEF_ADMIN_IDS = None
+
+def _load_admin_ids():
+    global _DEF_ADMIN_IDS
+    if _DEF_ADMIN_IDS is not None:
+        return _DEF_ADMIN_IDS
+    ids = set()
+    raw_many = os.getenv('ADMIN_USER_IDS')
+    raw_one = os.getenv('ADMIN_USER_ID')
+    if raw_many:
+        for part in raw_many.split(','):
+            part = part.strip()
+            if part.isdigit():
+                ids.add(int(part))
+    if raw_one and raw_one.strip().isdigit():
+        ids.add(int(raw_one.strip()))
+    _DEF_ADMIN_IDS = ids
+    return _DEF_ADMIN_IDS
+
+def is_admin(user_id: int) -> bool:
+    admin_ids = _load_admin_ids()
+    if user_id in admin_ids:
+        return True
+    session = SessionLocal()
+    try:
+        user = session.query(User).get(user_id)
+        return bool(user and getattr(user, 'status', None) == 'admin')
+    finally:
+        session.close()
