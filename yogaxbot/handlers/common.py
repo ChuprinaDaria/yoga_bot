@@ -4,7 +4,7 @@ from aiogram import Bot
 from aiogram.enums import ParseMode
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.fsm.state import State, StatesGroup
-from db import SessionLocal, User, DISCOUNT_DEEP_LINK
+from yogaxbot.db import SessionLocal, User, DISCOUNT_DEEP_LINK
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
@@ -13,8 +13,9 @@ def get_main_reply_keyboard():
     return ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text='🧘‍♀️ Безкоштовний курс')],
-            [KeyboardButton(text='💬 Чат школи йоги')],
-            [KeyboardButton(text='Написати тренеру')]
+            
+            [KeyboardButton(text='✉️Написати тренеру')]
+            
         ],
         resize_keyboard=True,
         is_persistent=True
@@ -41,7 +42,13 @@ class AdminStates(StatesGroup):
     await_broadcast_photo = State()
     await_workout_photo = State()
     await_workout_caption = State()
+    await_workout_code = State()
     await_workout_url = State()
+    # Нові стани для розсилки по статусах
+    await_status_broadcast_text = State()
+    await_status_broadcast_photo = State()
+    # Встановлення фото для існуючого тренування
+    await_set_workout_photo = State()
 
 # Admin helpers
 _DEF_ADMIN_IDS = None
