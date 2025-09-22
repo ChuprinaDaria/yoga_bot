@@ -115,6 +115,8 @@ async def run_start_open_course(user_id: int, chat_id: int, bot: Bot, force: boo
             if not has_any:
                 user.start_pending_at = None
                 session.commit()
+                await bot.send_message(chat_id, await T('OPEN_COURSE_INTRO'), protect_content=True)
+                await asyncio.sleep(10)
                 await send_six_workouts(user_id, chat_id, bot)
     finally:
         session.close()
