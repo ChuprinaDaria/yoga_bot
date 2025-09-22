@@ -1,12 +1,14 @@
 import logging
 import os
+import asyncio
 from aiogram import Bot
 from aiogram import F
 from aiogram.filters import Command
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, FSInputFile
+from aiogram.exceptions import TelegramBadRequest
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from datetime import datetime, timedelta
-from yogaxbot.db import SessionLocal, User, WorkoutCatalog, WorkoutMessage, T, DISCOUNT_DEEP_LINK, TextBlock
+from yogaxbot.db import SessionLocal, User, WorkoutCatalog, WorkoutMessage, T, TextBlock
 from . import router
 from .common import get_main_reply_keyboard, menu_text
 
@@ -18,9 +20,14 @@ async def send_welcome(user_id, chat_id, bot: Bot):
     project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
     local_path = os.path.join(project_root, default_name)
 
+    # Статична кнопка для старту курсу
+    btn_kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text='ПОЧАТИ БЕЗКОШТОВНИЙ КУРС', callback_data='start_first_workout')]
+    ])
+
     if os.path.exists(local_path):
         try:
-            await bot.send_photo(chat_id=chat_id, photo=FSInputFile(local_path), caption=await T('WELCOME'), protect_content=True)
+            await bot.send_photo(chat_id=chat_id, photo=FSInputFile(local_path), caption=await T('WELCOME'), reply_markup=btn_kb, protect_content=True)
             return
         except Exception as e:
             logger.warning("Failed to send local welcome photo at %s: %s", local_path, e)
@@ -29,7 +36,7 @@ async def send_welcome(user_id, chat_id, bot: Bot):
     photo_url = os.getenv('WELCOME_PHOTO_URL')
     if photo_url:
         try:
-            await bot.send_photo(chat_id=chat_id, photo=photo_url, caption=await T('WELCOME'), protect_content=True)
+            await bot.send_photo(chat_id=chat_id, photo=photo_url, caption=await T('WELCOME'), reply_markup=btn_kb, protect_content=True)
             return
         except Exception as e:
             logger.warning("Failed to send welcome photo by URL %s: %s", photo_url, e)
@@ -43,13 +50,13 @@ async def send_welcome(user_id, chat_id, bot: Bot):
         session.close()
     if url:
         try:
-            await bot.send_photo(chat_id=chat_id, photo=url, caption=await T('WELCOME'), protect_content=True)
+            await bot.send_photo(chat_id=chat_id, photo=url, caption=await T('WELCOME'), reply_markup=btn_kb, protect_content=True)
             return
         except Exception as e:
             logger.warning("Failed to send welcome photo by TextBlock URL %s: %s", url, e)
 
     # Фолбек: тільки текст
-    await bot.send_message(chat_id=chat_id, text=await T('WELCOME'), protect_content=True)
+    await bot.send_message(chat_id=chat_id, text=await T('WELCOME'), reply_markup=btn_kb, protect_content=True)
 
 async def send_six_workouts(user_id, chat_id, bot: Bot):
     session = SessionLocal()
@@ -100,6 +107,7 @@ async def run_start_open_course(user_id: int, chat_id: int, bot: Bot, force: boo
             user.start_pending_at = None
             session.commit()
             await bot.send_message(chat_id, await T('OPEN_COURSE_INTRO'), protect_content=True)
+            await asyncio.sleep(10)
             await send_six_workouts(user_id, chat_id, bot)
         else:
             # Якщо вже активний тріал, але тренування ще не відправлялись — відправити 6 тренувань
@@ -124,7 +132,11 @@ async def cmd_start(message: Message, bot: Bot, **data):
         session.commit()
     session.close()
     await send_welcome(user_id, message.chat.id, bot)
-    await message.answer('Головне меню:', reply_markup=get_main_reply_keyboard())
+    try:
+        await bot.send_message(message.chat.id, '\u2063', reply_markup=get_main_reply_keyboard())
+    except TelegramBadRequest:
+        await bot.send_message(message.chat.id, '.', reply_markup=get_main_reply_keyboard())
+   
     if scheduler:
         run_at = datetime.now() + timedelta(minutes=1)
         logger.info("Scheduling run_start_open_course at %s for user_id=%s", run_at.isoformat(), user_id)
@@ -155,7 +167,8 @@ async def handle_chat_link(message: Message):
 
 
 
-@router.message(F.text == 'Написати тренеру')
+@router.message(Command('contact'))
+@router.message(F.text.in_({'Написати тренеру', '✉️Написати тренеру'}))
 async def handle_write_coach(message: Message):
     kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text='Написати тренеру', url='https://t.me/seryogaji')]])
     await message.answer('Напишіть тренеру, щоб підібрати персональну програму:', reply_markup=kb)
@@ -165,7 +178,6 @@ async def handle_buy_subscription(message: Message):
     # Поки що ставимо "заглушку" посилання
     kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text='Оформити абонемент', url='https://example.com/subscription')]])
     await message.answer('Оберіть тариф та оформіть абонемент:', reply_markup=kb)
-
 @router.callback_query(F.data == 'start_first_workout')
 async def cb_start_first_workout(callback: CallbackQuery, bot: Bot):
     user_id = callback.from_user.id
@@ -188,3 +200,4 @@ async def cb_start_first_workout(callback: CallbackQuery, bot: Bot):
         logger.info("Starting course and sending six workouts to user_id=%s chat_id=%s via button", user_id, chat_id)
         await run_start_open_course(user_id, chat_id, bot, force=True)
     await callback.answer()
+

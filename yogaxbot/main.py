@@ -14,7 +14,7 @@ from aiogram.client.default import DefaultBotProperties
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from yogaxbot.handlers import router
 from yogaxbot.handlers.tasks import trial_maintenance, purge_workouts, cleanup_old_messages
-from yogaxbot.db import seed_free_workouts_if_empty
+from yogaxbot.db import seed_free_workouts_if_empty, ensure_welcome_seeded
 
 load_dotenv()
 
@@ -39,6 +39,7 @@ async def main():
     scheduler.add_job(cleanup_old_messages, 'interval', hours=1, args=[bot])
 
     seed_free_workouts_if_empty()
+    ensure_welcome_seeded()
 
     async def scheduler_middleware(handler, event, data):
         data['scheduler'] = scheduler

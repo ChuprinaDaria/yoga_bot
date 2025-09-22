@@ -4,7 +4,7 @@ from aiogram import Bot
 from aiogram.enums import ParseMode
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.fsm.state import State, StatesGroup
-from yogaxbot.db import SessionLocal, User, DISCOUNT_DEEP_LINK
+from yogaxbot.db import SessionLocal, User
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
@@ -49,6 +49,10 @@ class AdminStates(StatesGroup):
     await_status_broadcast_photo = State()
     # Встановлення фото для існуючого тренування
     await_set_workout_photo = State()
+    # Редагування привітання/фото/кнопки
+    await_welcome_text = State()
+    await_welcome_photo = State()
+    await_text_block_content = State()
 
 # Admin helpers
 _DEF_ADMIN_IDS = None

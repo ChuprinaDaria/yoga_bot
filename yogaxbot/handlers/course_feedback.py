@@ -25,7 +25,7 @@ async def course_feedback_positive(callback: CallbackQuery, bot):
             kb = InlineKeyboardMarkup(inline_keyboard=[[
                 InlineKeyboardButton(
                     text='Отримати знижку на перший абонемент',
-                    url='https://t.me/m/PINgAAJzODcy'
+                    url='https://t.me/m/JHM2HLOFZDky'
                 )
             ]])
 
