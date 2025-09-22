@@ -67,7 +67,40 @@ async def admin_add_workout_step_url(message: Message, state):
         w = WorkoutCatalog(code=code, caption=caption, url=url, photo_file_id=photo_file_id, is_active=True)
         session.add(w)
         session.commit()
-        # Після збереження запропонувати відправку аудиторіям (із кількостями)
+        
+        # Запитати, що робити далі
+        await state.update_data(new_workout_id=w.id)
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text='Просто зберегти', callback_data='workout_action_save')],
+            [InlineKeyboardButton(text='Зберегти і відправити', callback_data='workout_action_send')]
+        ])
+        await message.answer(f'Тренування збережено! Код: {code}. Що робити далі?', reply_markup=kb)
+        await state.set_state(AdminStates.await_workout_action)
+
+    finally:
+        session.close()
+
+@router.callback_query(AdminStates.await_workout_action)
+async def workout_action_callback(callback: CallbackQuery, state, bot: Bot):
+    action = callback.data
+    data = await state.get_data()
+    wid = data.get('new_workout_id')
+
+    if not wid:
+        await callback.message.answer("Помилка: не знайдено ID тренування.")
+        await state.clear()
+        await callback.answer()
+        return
+
+    if action == 'workout_action_save':
+        await callback.message.edit_text("Тренування збережено.")
+        await state.clear()
+        await callback.answer()
+        return
+
+    # Логіка для 'workout_action_send'
+    session = SessionLocal()
+    try:
         stats = {}
         result = session.query(User.status, func.count(User.user_id)).group_by(User.status).all()
         for status, count in result:
@@ -75,17 +108,19 @@ async def admin_add_workout_step_url(message: Message, state):
         total = session.query(User).count()
 
         kb = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text=f'👥 Відправити всім ({total})', callback_data=f'workout_send_all_{w.id}')],
-            [InlineKeyboardButton(text=f'🆕 Новим ({stats.get("new", 0)})', callback_data=f'workout_send_status_new_{w.id}')],
-            [InlineKeyboardButton(text=f'🏃 Активний тріал ({stats.get("trial_active", 0)})', callback_data=f'workout_send_status_trial_active_{w.id}')],
-            [InlineKeyboardButton(text=f'⏰ Тріал закінчився ({stats.get("trial_expired", 0)})', callback_data=f'workout_send_status_trial_expired_{w.id}')],
-            [InlineKeyboardButton(text=f'✅ Готові купувати ({stats.get("open", 0)})', callback_data=f'workout_send_status_open_{w.id}')],
-            [InlineKeyboardButton(text=f'💎 Активні клієнти ({stats.get("active", 0)})', callback_data=f'workout_send_status_active_{w.id}')]
+            [InlineKeyboardButton(text=f'👥 Відправити всім ({total})', callback_data=f'workout_send_all_{wid}')],
+            [InlineKeyboardButton(text=f'🆕 Новим ({stats.get("new", 0)})', callback_data=f'workout_send_status_new_{wid}')],
+            [InlineKeyboardButton(text=f'🏃 Активний тріал ({stats.get("trial_active", 0)})', callback_data=f'workout_send_status_trial_active_{wid}')],
+            [InlineKeyboardButton(text=f'⏰ Тріал закінчився ({stats.get("trial_expired", 0)})', callback_data=f'workout_send_status_trial_expired_{wid}')],
+            [InlineKeyboardButton(text=f'✅ Готові купувати ({stats.get("open", 0)})', callback_data=f'workout_send_status_open_{wid}')],
+            [InlineKeyboardButton(text=f'💎 Активні клієнти ({stats.get("active", 0)})', callback_data=f'workout_send_status_active_{wid}')]
         ])
-        await message.answer(f'Тренування збережено! Код: {code}\nКому відправити бонусне тренування?', reply_markup=kb)
+        await callback.message.edit_text('Кому відправити бонусне тренування?', reply_markup=kb)
     finally:
         session.close()
-    await state.clear()
+    
+    # Стан не очищуємо, бо workout_send_callback очікує на ID
+    await callback.answer()
 
 @router.callback_query(F.data.startswith('workout_send_'))
 async def workout_send_callback(callback: CallbackQuery, state, bot: Bot):
@@ -160,6 +195,7 @@ async def workout_send_callback(callback: CallbackQuery, state, bot: Bot):
             sent_fail += 1
             continue
     await callback.message.answer(f'Розсилку завершено. Успішно: {sent_ok}, помилок: {sent_fail}')
+    await state.clear() # Очищуємо стан тут, після завершення розсилки
     await callback.answer()
 
 @router.message(AdminStates.await_set_workout_photo)

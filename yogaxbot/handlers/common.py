@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 def get_main_reply_keyboard():
     return ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text='🧘‍♀️ Безкоштовний курс')],
+            
             
             [KeyboardButton(text='✉️Написати тренеру')]
             
@@ -53,6 +53,8 @@ class AdminStates(StatesGroup):
     await_welcome_text = State()
     await_welcome_photo = State()
     await_text_block_content = State()
+    # Вибір дії після додавання тренування
+    await_workout_action = State()
 
 # Admin helpers
 _DEF_ADMIN_IDS = None

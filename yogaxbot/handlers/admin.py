@@ -129,6 +129,31 @@ async def admin_workouts_cb(callback: CallbackQuery, state):
     await state.clear()
     await callback.answer()
 
+@router.callback_query(F.data.startswith('admin_confirm_delete_workout_'))
+async def admin_confirm_delete_workout_cb(callback: CallbackQuery, state):
+    parts = callback.data.split('_')
+    action = parts[4]
+    wid = int(parts[5])
+
+    if action == 'yes':
+        session = SessionLocal()
+        try:
+            w = session.query(WorkoutCatalog).get(wid)
+            if w:
+                code = w.code
+                session.delete(w)
+                session.commit()
+                await callback.message.answer(f'Тренування {code} видалено.')
+            else:
+                await callback.message.answer('Тренування вже видалено.')
+        finally:
+            session.close()
+    else: # 'no'
+        await callback.message.answer('Видалення скасовано.')
+
+    await admin_workouts_cb(callback, state)
+    await callback.answer()
+
 @router.callback_query(F.data.startswith('admin_toggle_workout_'))
 async def admin_toggle_workout_cb(callback: CallbackQuery, state):
     wid = int(callback.data.replace('admin_toggle_workout_', ''))
@@ -143,14 +168,17 @@ async def admin_toggle_workout_cb(callback: CallbackQuery, state):
                 w.is_active = False
                 session.commit()
                 await callback.message.answer(f'Тренування {w.code} вимкнено. Повторне натискання (на ❌) — видалить його.')
+                await admin_workouts_cb(callback, state)
             else:
-                code = w.code
-                session.delete(w)
-                session.commit()
-                await callback.message.answer(f'Тренування {code} видалено.')
+                kb_confirm = InlineKeyboardMarkup(inline_keyboard=[
+                    [
+                        InlineKeyboardButton(text='Так, видалити', callback_data=f'admin_confirm_delete_workout_yes_{w.id}'),
+                        InlineKeyboardButton(text='Ні, скасувати', callback_data=f'admin_confirm_delete_workout_no_{w.id}')
+                    ]
+                ])
+                await callback.message.answer(f'Ви впевнені, що хочете видалити тренування {w.code}?', reply_markup=kb_confirm)
     finally:
         session.close()
-    await admin_workouts_cb(callback, state)
     await callback.answer()
 
 @router.callback_query(F.data.startswith('admin_set_workout_photo_'))
