@@ -119,8 +119,9 @@ async def admin_workouts_cb(callback: CallbackQuery, state):
     session = SessionLocal()
     workouts = session.query(WorkoutCatalog).all()
     kb = [[
-        InlineKeyboardButton(text=f'{"✅" if w.is_active else "❌"} {w.code}', callback_data=f'admin_toggle_workout_{w.id}'),
-        InlineKeyboardButton(text='🖼️ Фото', callback_data=f'admin_set_workout_photo_{w.id}')
+        InlineKeyboardButton(text=f'{w.code}', callback_data=f'none_{w.id}'), # Placeholder
+        InlineKeyboardButton(text='🖼️ Фото', callback_data=f'admin_set_workout_photo_{w.id}'),
+        InlineKeyboardButton(text='🗑️ Видалити', callback_data=f'admin_delete_workout_{w.id}')
     ] for w in workouts]
     kb.append([InlineKeyboardButton(text='➕ Додати тренування', callback_data='admin_add_workout')])
     kb.append([InlineKeyboardButton(text='⬅️ Назад', callback_data='admin_panel')])
@@ -154,29 +155,20 @@ async def admin_confirm_delete_workout_cb(callback: CallbackQuery, state):
     await admin_workouts_cb(callback, state)
     await callback.answer()
 
-@router.callback_query(F.data.startswith('admin_toggle_workout_'))
-async def admin_toggle_workout_cb(callback: CallbackQuery, state):
-    wid = int(callback.data.replace('admin_toggle_workout_', ''))
+@router.callback_query(F.data.startswith('admin_delete_workout_'))
+async def admin_delete_workout_cb(callback: CallbackQuery, state):
+    wid = int(callback.data.replace('admin_delete_workout_', ''))
     session = SessionLocal()
     try:
         w = session.query(WorkoutCatalog).get(wid)
-        if not w:
-            await callback.message.answer('Тренування не знайдено.')
-        else:
-            if w.is_active:
-                # Якщо активне — вимкнути (показати ❌). Повторне натискання видалить
-                w.is_active = False
-                session.commit()
-                await callback.message.answer(f'Тренування {w.code} вимкнено. Повторне натискання (на ❌) — видалить його.')
-                await admin_workouts_cb(callback, state)
-            else:
-                kb_confirm = InlineKeyboardMarkup(inline_keyboard=[
-                    [
-                        InlineKeyboardButton(text='Так, видалити', callback_data=f'admin_confirm_delete_workout_yes_{w.id}'),
-                        InlineKeyboardButton(text='Ні, скасувати', callback_data=f'admin_confirm_delete_workout_no_{w.id}')
-                    ]
-                ])
-                await callback.message.answer(f'Ви впевнені, що хочете видалити тренування {w.code}?', reply_markup=kb_confirm)
+        if w:
+            kb_confirm = InlineKeyboardMarkup(inline_keyboard=[
+                [
+                    InlineKeyboardButton(text='Так, видалити', callback_data=f'admin_confirm_delete_workout_yes_{w.id}'),
+                    InlineKeyboardButton(text='Ні, скасувати', callback_data=f'admin_confirm_delete_workout_no_{w.id}')
+                ]
+            ])
+            await callback.message.answer(f'Ви впевнені, що хочете видалити тренування {w.code}?', reply_markup=kb_confirm)
     finally:
         session.close()
     await callback.answer()
