@@ -60,7 +60,7 @@ async def send_welcome(user_id, chat_id, bot: Bot):
 
 async def send_six_workouts(user_id, chat_id, bot: Bot):
     session = SessionLocal()
-    workouts = session.query(WorkoutCatalog).filter_by(is_active=True).all()
+    workouts = session.query(WorkoutCatalog).all() # Прибираємо фільтр is_active=True
     if not workouts:
         session.close()
         return
