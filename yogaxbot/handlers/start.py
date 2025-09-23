@@ -79,6 +79,10 @@ async def send_six_workouts(user_id, chat_id, bot: Bot):
         session.add(WorkoutMessage(user_id=user_id, chat_id=chat_id, message_id=msg.message_id))
     session.commit()
     session.close()
+    
+    # Після відправки всіх уроків — через 20 секунд відправити рекомендацію
+    await asyncio.sleep(20)
+    await bot.send_message(chat_id, await T('POST_LESSONS'), protect_content=True)
 
 async def start_course_flow(user_id: int, chat_id: int, bot: Bot):
     """

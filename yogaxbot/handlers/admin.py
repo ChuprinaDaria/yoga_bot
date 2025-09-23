@@ -54,12 +54,14 @@ async def admin_texts_menu(callback: CallbackQuery, state):
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text='👋 Welcome (текст)', callback_data='edit_text_WELCOME')],
         [InlineKeyboardButton(text='🖼️ Welcome (фото)', callback_data='admin_edit_welcome_photo')],
+        
         [InlineKeyboardButton(text='⏳ Кінець курсу', callback_data='edit_text_COURSE_FINISHED')],
         [InlineKeyboardButton(text='🙂 Фідбек: Так', callback_data='edit_text_FEEDBACK_POSITIVE')],
         [InlineKeyboardButton(text='🙁 Фідбек: Ні', callback_data='edit_text_FEEDBACK_NEGATIVE')],
         [InlineKeyboardButton(text='🏁 Фінальне повідомлення', callback_data='edit_text_FINAL_COURSE_END')],
         [InlineKeyboardButton(text='⏰ Нагадування з днями', callback_data='edit_text_REMINDER_WITH_DAYS')],
         [InlineKeyboardButton(text='ℹ️ Інтро курсу', callback_data='edit_text_OPEN_COURSE_INTRO')],
+        [InlineKeyboardButton(text='📌 Після уроків', callback_data='edit_text_POST_LESSONS')],
         [InlineKeyboardButton(text='⬅️ Назад', callback_data='admin_panel')]
     ])
     await callback.message.answer('Оберіть, що редагувати:', reply_markup=kb)
