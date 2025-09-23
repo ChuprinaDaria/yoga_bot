@@ -64,6 +64,7 @@ async def send_six_workouts(user_id, chat_id, bot: Bot):
     if not workouts:
         session.close()
         return
+    sent_count = 0
     for w in workouts[:6]:
         kb = InlineKeyboardMarkup(inline_keyboard=[[
             InlineKeyboardButton(text='Перейти до тренування', url=w.url)
@@ -77,20 +78,38 @@ async def send_six_workouts(user_id, chat_id, bot: Bot):
         if msg is None:
             msg = await bot.send_message(chat_id, w.caption, reply_markup=kb, protect_content=True)
         session.add(WorkoutMessage(user_id=user_id, chat_id=chat_id, message_id=msg.message_id))
+        sent_count += 1
     session.commit()
     session.close()
     
-    # Після відправки всіх уроків — через 20 секунд відправити рекомендацію
-    await asyncio.sleep(20)
-    await bot.send_message(chat_id, await T('POST_LESSONS'), protect_content=True)
+    # Після відправки всіх уроків — через 20 секунд відправити рекомендацію (лише якщо щось надіслали)
+    if sent_count > 0:
+        await asyncio.sleep(20)
+        await bot.send_message(chat_id, await T('POST_LESSONS'), protect_content=True)
 
-async def start_course_flow(user_id: int, chat_id: int, bot: Bot):
+async def start_course_flow(user_id: int, chat_id: int, bot: Bot, forced: bool = False):
     """
     Централізована функція для запуску курсу.
     Завжди надсилає інтро, чекає 10 сек, реєструє тріал і надсилає вправи.
+    Якщо викликано автоматично (forced=False), спрацює лише коли встановлено start_pending_at і настав час.
     """
-    logger.info(f"Executing start_course_flow for user_id={user_id}")
-    
+    logger.info(f"Executing start_course_flow for user_id={user_id} forced={forced}")
+
+    # Перевірка відкладеного запуску для авто-викликів
+    if not forced:
+        session_check = SessionLocal()
+        try:
+            u = session_check.query(User).get(user_id)
+            now_local = datetime.now()
+            if not u or not getattr(u, 'start_pending_at', None) or now_local < u.start_pending_at:
+                logger.info("Auto-start skipped for user_id=%s: pending missing or not yet time", user_id)
+                return
+            # скинемо pending одразу, щоб уникнути дублювань
+            u.start_pending_at = None
+            session_check.commit()
+        finally:
+            session_check.close()
+
     # 1. Завжди надсилаємо інтро
     await bot.send_message(chat_id, await T('OPEN_COURSE_INTRO'), protect_content=True)
     
@@ -115,7 +134,7 @@ async def start_course_flow(user_id: int, chat_id: int, bot: Bot):
             user.last_reminder_at = now
             session.commit()
 
-        # Надсилаємо тренування завжди після інтро (навіть якщо були раніше)
+        # Надсилаємо тренування завжди після інтро
         await send_six_workouts(user_id, chat_id, bot)
     finally:
         session.close()
@@ -156,7 +175,7 @@ async def cmd_start(message: Message, bot: Bot, **data):
 @router.message(F.text == '🧘‍♀️ Безкоштовний курс')
 async def handle_free_course(message: Message, bot: Bot):
     user_id = message.from_user.id
-    await start_course_flow(user_id, message.chat.id, bot)
+    await start_course_flow(user_id, message.chat.id, bot, forced=True)
 
 
 
@@ -182,6 +201,6 @@ async def handle_buy_subscription(message: Message):
 async def cb_start_first_workout(callback: CallbackQuery, bot: Bot):
     user_id = callback.from_user.id
     chat_id = callback.message.chat.id
-    await start_course_flow(user_id, chat_id, bot)
+    await start_course_flow(user_id, chat_id, bot, forced=True)
     await callback.answer()
 
