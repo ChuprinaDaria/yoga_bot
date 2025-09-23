@@ -80,44 +80,45 @@ async def send_six_workouts(user_id, chat_id, bot: Bot):
     session.commit()
     session.close()
 
-async def run_start_open_course(user_id: int, chat_id: int, bot: Bot, force: bool = False):
+async def start_course_flow(user_id: int, chat_id: int, bot: Bot):
+    """
+    Централізована функція для запуску курсу.
+    Завжди надсилає інтро, чекає 10 сек, реєструє тріал і надсилає вправи.
+    """
+    logger.info(f"Executing start_course_flow for user_id={user_id}")
+    
+    # 1. Завжди надсилаємо інтро
+    await bot.send_message(chat_id, await T('OPEN_COURSE_INTRO'), protect_content=True)
+    
+    # 2. Чекаємо 10 секунд
+    await asyncio.sleep(10)
+    
+    # 3. Реєструємо тріал (якщо треба) і надсилаємо вправи
     session = SessionLocal()
     try:
-        logger.info("run_start_open_course invoked for user_id=%s chat_id=%s", user_id, chat_id)
         user = session.query(User).get(user_id)
         if not user:
             user = User(user_id=user_id, status='new')
             session.add(user)
             session.commit()
-        # Якщо не примусово, перевіряємо очікування відкладеного старту
-        if not force:
-            now_local = datetime.now()
-            if not getattr(user, 'start_pending_at', None):
-                logger.info("Auto-start skipped for user_id=%s: no pending flag", user_id)
-                return
-            if now_local < user.start_pending_at:
-                logger.info("Auto-start skipped for user_id=%s: not yet time (start_pending_at=%s)", user_id, user.start_pending_at)
-                return
-        if user.status != 'trial_active':
-            now = datetime.utcnow()
-            user.status = 'trial_active'
-            user.trial_started_at = now
-            user.trial_expires_at = now + timedelta(days=15)
-            user.last_reminder_at = now
-            user.start_pending_at = None
-            session.commit()
-            
+
+        # Відправляємо тренування тільки якщо їх ще не було
+        has_any_workouts = session.query(WorkoutMessage).filter_by(user_id=user_id).first() is not None
+        if not has_any_workouts:
+            if user.status != 'trial_active':
+                now = datetime.utcnow()
+                user.status = 'trial_active'
+                user.trial_started_at = now
+                user.trial_expires_at = now + timedelta(days=15)
+                user.last_reminder_at = now
+                session.commit()
             await send_six_workouts(user_id, chat_id, bot)
         else:
-            # Якщо вже активний тріал, але тренування ще не відправлялись — відправити 6 тренувань
-            has_any = session.query(WorkoutMessage).filter_by(user_id=user_id).first() is not None
-            if not has_any:
-                user.start_pending_at = None
-                session.commit()
-                
-                await send_six_workouts(user_id, chat_id, bot)
+            logger.info(f"User {user_id} already has workouts, skipping send.")
+            
     finally:
         session.close()
+
 
 @router.message(Command('start'))
 async def cmd_start(message: Message, bot: Bot, **data):
@@ -149,14 +150,12 @@ async def cmd_start(message: Message, bot: Bot, **data):
                 session2.commit()
         finally:
             session2.close()
-        scheduler.add_job(run_start_open_course, 'date', run_date=run_at, args=[user_id, message.chat.id, bot])
+        scheduler.add_job(start_course_flow, 'date', run_date=run_at, args=[user_id, message.chat.id, bot])
 
 @router.message(F.text == '🧘‍♀️ Безкоштовний курс')
 async def handle_free_course(message: Message, bot: Bot):
     user_id = message.from_user.id
-    await bot.send_message(message.chat.id, await T('OPEN_COURSE_INTRO'), protect_content=True)
-    kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text='🚀 Почати зараз', callback_data='start_first_workout')]])
-    await message.answer(await T('START_NOW_MSG'), reply_markup=kb)
+    await start_course_flow(user_id, message.chat.id, bot)
 
 
 
@@ -182,25 +181,6 @@ async def handle_buy_subscription(message: Message):
 async def cb_start_first_workout(callback: CallbackQuery, bot: Bot):
     user_id = callback.from_user.id
     chat_id = callback.message.chat.id
-    session = SessionLocal()
-    try:
-        has_any = session.query(WorkoutMessage).filter_by(user_id=user_id).first() is not None
-        # Скасувати відкладений автозапуск — користувач натиснув "Почати зараз"
-        u = session.query(User).get(user_id)
-        if u and u.start_pending_at is not None:
-            u.start_pending_at = None
-            session.commit()
-    finally:
-        session.close()
-
-    if has_any:
-        logger.info("Resending six workouts to user_id=%s chat_id=%s via button", user_id, chat_id)
-        await send_six_workouts(user_id, chat_id, bot)
-    else:
-        logger.info("Starting course and sending six workouts to user_id=%s chat_id=%s via button", user_id, chat_id)
-        # Спочатку надсилаємо інтро, потім тренування
-        await bot.send_message(chat_id, await T('OPEN_COURSE_INTRO'), protect_content=True)
-        await asyncio.sleep(10)
-        await run_start_open_course(user_id, chat_id, bot, force=True)
+    await start_course_flow(user_id, chat_id, bot)
     await callback.answer()
 
