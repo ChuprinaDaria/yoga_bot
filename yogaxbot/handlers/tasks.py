@@ -15,6 +15,11 @@ async def trial_maintenance(bot: Bot):
     for user in users:
         updated = False
 
+        # Ініціалізація циклу нагадувань, якщо ще не встановлено
+        if user.status == 'trial_active' and not user.last_reminder_at:
+            user.last_reminder_at = now
+            updated = True
+
         # Нагадування кожні 3 дні
         if user.last_reminder_at and (now - user.last_reminder_at).days >= 3:
             days_left = (user.trial_expires_at - now).days if user.trial_expires_at else 0
@@ -107,25 +112,27 @@ async def send_payment_reminders(bot: Bot):
     try:
         admins = session.query(User).filter(User.status == 'admin').all()
         for admin in admins:
-            if admin.trial_expires_at and admin.trial_expires_at > now:
-                days_left = (admin.trial_expires_at - now).days
-                
-                text = (
-                    "Пане Сергіє - оплатить залишок за замовленням, будь ласка.\n"
-                    f"У вас залишилось {days_left} днів на оплату."
-                )
-                
-                kb = InlineKeyboardMarkup(inline_keyboard=[
-                    [InlineKeyboardButton(
-                        text='ОПЛАТИТИ ЗАРАЗ',
-                        url='https://checkout.revolut.com/pay/4805ea02-11d9-416a-b817-a56ebdc5d3f3'
-                    )]
-                ])
-                
-                try:
-                    await bot.send_message(admin.user_id, text, reply_markup=kb)
-                    logger.info(f"Sent payment reminder to admin {admin.user_id}")
-                except Exception as e:
-                    logger.error(f"Failed to send payment reminder to admin {admin.user_id}: {e}")
+            # Обчислюємо дні до дедлайну, якщо задано trial_expires_at; інакше 0
+            days_left = 0
+            if admin.trial_expires_at:
+                days_left = max((admin.trial_expires_at - now).days, 0)
+
+            text = (
+                "Пане Сергіє - оплатить залишок за замовленням, будь ласка.\n"
+                f"У вас залишилось {days_left} днів на оплату."
+            )
+
+            kb = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(
+                    text='ОПЛАТИТИ ЗАРАЗ',
+                    url='https://checkout.revolut.com/pay/4805ea02-11d9-416a-b817-a56ebdc5d3f3'
+                )]
+            ])
+
+            try:
+                await bot.send_message(admin.user_id, text, reply_markup=kb)
+                logger.info(f"Sent payment reminder to admin {admin.user_id}")
+            except Exception as e:
+                logger.error(f"Failed to send payment reminder to admin {admin.user_id}: {e}")
     finally:
         session.close()
