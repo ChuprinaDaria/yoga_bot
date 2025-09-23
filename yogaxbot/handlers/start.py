@@ -200,6 +200,9 @@ async def cb_start_first_workout(callback: CallbackQuery, bot: Bot):
         await send_six_workouts(user_id, chat_id, bot)
     else:
         logger.info("Starting course and sending six workouts to user_id=%s chat_id=%s via button", user_id, chat_id)
+        # Спочатку надсилаємо інтро, потім тренування
+        await bot.send_message(chat_id, await T('OPEN_COURSE_INTRO'), protect_content=True)
+        await asyncio.sleep(10)
         await run_start_open_course(user_id, chat_id, bot, force=True)
     await callback.answer()
 
