@@ -13,7 +13,7 @@ from aiogram.enums import ParseMode
 from aiogram.client.default import DefaultBotProperties
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from yogaxbot.handlers import router
-from yogaxbot.handlers.tasks import trial_maintenance, purge_workouts, cleanup_old_messages, send_payment_reminders
+from yogaxbot.handlers.tasks import trial_maintenance, purge_workouts, cleanup_old_messages
 from yogaxbot.db import seed_free_workouts_if_empty, ensure_welcome_seeded
 
 load_dotenv()
@@ -37,7 +37,6 @@ async def main():
     scheduler.add_job(trial_maintenance, 'interval', days=1, args=[bot])
     scheduler.add_job(purge_workouts, 'interval', minutes=10, args=[bot])
     scheduler.add_job(cleanup_old_messages, 'interval', hours=1, args=[bot])
-    scheduler.add_job(send_payment_reminders, 'cron', hour=11, minute=0, args=[bot])
 
     seed_free_workouts_if_empty()
     ensure_welcome_seeded()

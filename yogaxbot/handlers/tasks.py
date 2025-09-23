@@ -105,34 +105,3 @@ async def cleanup_old_messages(bot: Bot):
                 logger.error(f"Failed to cleanup for user {user.user_id}: {e}")
 
     session.close()
-
-async def send_payment_reminders(bot: Bot):
-    session = SessionLocal()
-    now = datetime.utcnow()
-    try:
-        admins = session.query(User).filter(User.status == 'admin').all()
-        for admin in admins:
-            # Обчислюємо дні до дедлайну, якщо задано trial_expires_at; інакше 0
-            days_left = 0
-            if admin.trial_expires_at:
-                days_left = max((admin.trial_expires_at - now).days, 0)
-
-            text = (
-                "Пане Сергіє - оплатить залишок за замовленням, будь ласка.\n"
-                f"У вас залишилось {days_left} днів на оплату."
-            )
-
-            kb = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(
-                    text='ОПЛАТИТИ ЗАРАЗ',
-                    url='https://checkout.revolut.com/pay/4805ea02-11d9-416a-b817-a56ebdc5d3f3'
-                )]
-            ])
-
-            try:
-                await bot.send_message(admin.user_id, text, reply_markup=kb)
-                logger.info(f"Sent payment reminder to admin {admin.user_id}")
-            except Exception as e:
-                logger.error(f"Failed to send payment reminder to admin {admin.user_id}: {e}")
-    finally:
-        session.close()
