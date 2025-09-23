@@ -12,6 +12,8 @@ python-dotenv==1.0.0
 # База даних
 SQLAlchemy==2.0.23
 alembic==1.13.1
+pytest==8.2.0
+pytest-asyncio==0.23.8
 
 # Логування (вбудовано в Python)
 # logging

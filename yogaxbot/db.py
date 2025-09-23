@@ -21,6 +21,10 @@ class User(Base):
     trial_expires_at = Column(DateTime, nullable=True)
     last_reminder_at = Column(DateTime, nullable=True)
     extension_used = Column(Boolean, default=False, nullable=False)
+    course_feedback_given = Column(Boolean, default=False)
+    course_extension_used = Column(Boolean, default=False)
+    feedback_message_id = Column(Integer, nullable=True)
+    status_history = Column(Text, nullable=True)
     blocked = Column(Boolean, default=False, nullable=False)
     start_pending_at = Column(DateTime, nullable=True)
     pinned_menu_message_id = Column(Integer, nullable=True)
@@ -65,16 +69,42 @@ Base.metadata.create_all(engine)
 # --- Дефолтні тексти ---
 DEFAULT_TEXTS = {
     'WELCOME': (
-        'Вітаємо у YogaX! 🧘‍♀️\n\n'
-        'Ви отримали безкоштовний доступ до курсу йоги.\n'
-        'Натисніть кнопку нижче, щоб почати.'
+        '<b>Привіт! Вітаю вас у моїй онлайн школі йоги - на безкоштовному курсі</b>. '
+        '<i>Я Сергій Дорошенко - Харківський практик йоги і сертифікований викладач із 2009 року.</i>\n\n'
+        'Протягом кількох днів ви спробуєте кілька занять із моєї онлайн йога студії і відчуєте (якщо позаймаєтесь) на собі ефект базових тренувань. '
+        'Тут у чаті будуть посилання на заняття та кілька лекцій.\n\n'
+        'Сподіваюсь, ви знайдете час займатися і відчути на собі ефект.\n\n'
+        'Всі свої запитання ви можете писати у чат школи йоги: посилання https://t.me/+xA1DOM00cc4zYmRi '
+        'у вигляді кнопки "чат школи йоги" — я особисто відповідаю на всі запитання.'
+    ),
+    'COURSE_FINISHED': (
+        'Доброго дня! Нагадаю що відкритий курс завершено\n'
+        'Чи вдалося вам займатися у ці дні?'
+    ),
+    'FEEDBACK_POSITIVE': (
+        'Супер,) Сподіваюсь вам було цікаво і є бажання продовжувати заняття разом.\n'
+        'Спеціально для учасників відкритого курсу діє знижка на перший абонемент у школу йоги:'
+    ),
+    'FEEDBACK_NEGATIVE': (
+        'Пропоную вам всеж таки спробувати :)\n'
+        'Коли знайдете час - приходьте і починайте\n'
+        'Курс буде доступен ще 1 день'
+    ),
+    'FINAL_COURSE_END': (
+        'Відкритий курс йоги завершено - буду радий будь яким вашим запитанням'
     ),
     'OPEN_COURSE_INTRO': (
-        'У відкритому курсі буде 6 безкоштовних тренувань на різні теми.\n'
-        'Заняття безкоштовно у доступі 15 днів і після цього періоду я буду радий отримати зворотній зв’язок та розробити для вас персональну програму занять.\n\n'
-        'Загалом у школі йоги 300 тематичних практик і тренувань — від початкового рівня до інтенсивів та матеріалів для підготовки викладачів йоги.\n'
-        'Але це все потім — давайте почнемо із відкритого курсу для знайомства.\n\n'
-        'Я надсилаю вам 6 тренувань і дуже раджу спробувати всі — вони дуже різні і працюють із різними ділянками тіла і емоцій.'
+        'Загалом у школі йоги 300 тематичних практик, лекцій і тренувань - від початкового рівня до інтенсивів та матеріалів для підготовки викладачів йоги.\n'
+        'Але це все потім - давайте почнемо із відкритого курсу для знайомства.'
+    ),
+    'POST_LESSONS': (
+        'Якщо важко обрати - рекомендую почати із уроку 159 для шиї та грудного відділу 💪'
+    ),
+    'REMINDER_WITH_DAYS': (
+        'Залишилось "{days_left} днів" дії безкоштовного курсу йоги.\n'
+        'Розумію як важко організувати себе для занять онлайн тому такі лагідні нагадування.\n'
+        'Сорі що відволікаю 🤝\n\n'
+        'Якщо ви вже почали займатися і у вас є запитання - буду радий вас чути:'
     ),
     'START_NOW_MSG': (
         'Готові почати? Натисніть кнопку нижче!'
@@ -87,13 +117,7 @@ DEFAULT_TEXTS = {
         'Термін дії безкоштовного доступу завершився.\n'
         'Оформіть абонемент, щоб продовжити тренування.'
     ),
-    'DISCOUNT_MSG': (
-        'Тільки сьогодні! Знижка на абонемент для нових користувачів.\n'
-        'Поспішайте скористатися пропозицією.'
-    ),
 }
-
-DISCOUNT_DEEP_LINK = 'https://t.me/yogaxbot?start=discount2024'
 
 # --- Хелпер для текстів ---
 def T_session():
@@ -112,6 +136,30 @@ async def T(key, **fmt):
         except Exception:
             pass
     return text
+
+
+def log_status_change(user, old_status, new_status, reason: str = "") -> None:
+    import json
+    import datetime as _dt
+
+    if not getattr(user, 'status_history', None):
+        user.status_history = "[]"
+
+    try:
+        history = json.loads(user.status_history)
+    except Exception:
+        history = []
+    history.append({
+        "timestamp": _dt.datetime.utcnow().isoformat(),
+        "from": old_status,
+        "to": new_status,
+        "reason": reason,
+    })
+    try:
+        user.status_history = json.dumps(history)
+    except Exception:
+        # У разі неможливості серіалізувати — ігноруємо, щоб не ламати логіку
+        pass
 
 def seed_free_workouts_if_empty() -> None:
     session = SessionLocal()
@@ -165,6 +213,18 @@ def seed_free_workouts_if_empty() -> None:
                     photo_file_id='',
                     is_active=True
                 ))
+        session.commit()
+    finally:
+        session.close()
+
+def ensure_welcome_seeded() -> None:
+    session = SessionLocal()
+    try:
+        # Якщо немає запису WELCOME — використовується DEFAULT_TEXTS
+        block = session.query(TextBlock).filter_by(key='WELCOME').first()
+        if not block:
+            session.add(TextBlock(key='WELCOME', content=DEFAULT_TEXTS['WELCOME']))
+        # Фото та кнопка — не обов'язкові, створюємо тільки якщо відсутні і є дефолти (для фото — пропускаємо)
         session.commit()
     finally:
         session.close()
