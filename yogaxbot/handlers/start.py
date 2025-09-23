@@ -105,6 +105,7 @@ async def start_course_flow(user_id: int, chat_id: int, bot: Bot):
         # Відправляємо тренування тільки якщо їх ще не було
         has_any_workouts = session.query(WorkoutMessage).filter_by(user_id=user_id).first() is not None
         if not has_any_workouts:
+            # Якщо користувач новий або без активного тріалу - реєструємо
             if user.status != 'trial_active':
                 now = datetime.utcnow()
                 user.status = 'trial_active'
@@ -112,6 +113,7 @@ async def start_course_flow(user_id: int, chat_id: int, bot: Bot):
                 user.trial_expires_at = now + timedelta(days=15)
                 user.last_reminder_at = now
                 session.commit()
+            # У будь-якому випадку надсилаємо тренування, якщо їх не було
             await send_six_workouts(user_id, chat_id, bot)
         else:
             logger.info(f"User {user_id} already has workouts, skipping send.")
