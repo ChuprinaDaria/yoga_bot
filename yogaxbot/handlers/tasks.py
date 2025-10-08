@@ -1,6 +1,7 @@
 import logging
 from yogaxbot.db import SessionLocal, User, WorkoutMessage, T, log_status_change
 from aiogram import Bot
+from aiogram.exceptions import TelegramForbiddenError
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from datetime import datetime, timedelta
 from .common import is_admin
@@ -25,14 +26,21 @@ async def trial_maintenance(bot: Bot):
             days_left = (user.trial_expires_at - now).days if user.trial_expires_at else 0
             if days_left > 0:
                 kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text='Написати у чат школи йоги', url='https://t.me/+xA1DOM00cc4zYmRi')]])
-                await bot.send_message(
-                    chat_id=user.user_id,
-                    text=await T('REMINDER_WITH_DAYS', days_left=days_left),
-                    reply_markup=kb,
-                    protect_content=True
-                )
-                user.last_reminder_at = now
-                updated = True
+                try:
+                    await bot.send_message(
+                        chat_id=user.user_id,
+                        text=await T('REMINDER_WITH_DAYS', days_left=days_left),
+                        reply_markup=kb,
+                        protect_content=True
+                    )
+                    user.last_reminder_at = now
+                    updated = True
+                except TelegramForbiddenError:
+                    # Користувач заблокував бота — позначимо та продовжимо
+                    user.blocked = True
+                    updated = True
+                except Exception as e:
+                    logger.warning("Failed to send reminder to user_id=%s: %s", user.user_id, e)
 
         # Закінчення курсу
         if user.trial_expires_at and now >= user.trial_expires_at and not user.course_feedback_given:
@@ -45,14 +53,20 @@ async def trial_maintenance(bot: Bot):
                 [InlineKeyboardButton(text='Ні, руки не дійшли 🙁', callback_data='course_feedback_no')]
             ])
 
-            msg = await bot.send_message(
-                chat_id=user.user_id,
-                text=await T('COURSE_FINISHED'),
-                reply_markup=kb,
-                protect_content=True
-            )
-            user.feedback_message_id = msg.message_id
-            updated = True
+            try:
+                msg = await bot.send_message(
+                    chat_id=user.user_id,
+                    text=await T('COURSE_FINISHED'),
+                    reply_markup=kb,
+                    protect_content=True
+                )
+                user.feedback_message_id = msg.message_id
+                updated = True
+            except TelegramForbiddenError:
+                user.blocked = True
+                updated = True
+            except Exception as e:
+                logger.warning("Failed to send course finished message to user_id=%s: %s", user.user_id, e)
 
         if updated:
             session.commit()

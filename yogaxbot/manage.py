@@ -71,14 +71,28 @@ async def _run_maintenance_async(run_cleanup: bool) -> None:
     bot = _get_bot()
     # 1) Оновлення статусів/нагадувань
     logger.info("Запуск trial_maintenance()")
-    await trial_maintenance(bot)
+    try:
+        await trial_maintenance(bot)
+    except Exception as e:
+        logger.warning("trial_maintenance failed: %s", e)
     # 2) Видалення тренувальних повідомлень у тих, у кого тріал сплив
     logger.info("Запуск purge_workouts()")
-    await purge_workouts(bot)
+    try:
+        await purge_workouts(bot)
+    except Exception as e:
+        logger.warning("purge_workouts failed: %s", e)
     # 3) Додаткове очищення фінального повідомлення після продовження на 1 день
     if run_cleanup:
         logger.info("Запуск cleanup_old_messages()")
-        await cleanup_old_messages(bot)
+        try:
+            await cleanup_old_messages(bot)
+        except Exception as e:
+            logger.warning("cleanup_old_messages failed: %s", e)
+    # Закриємо клієнтську сесію бота акуратно
+    try:
+        await bot.session.close()
+    except Exception:
+        pass
     logger.info("Завершено одноразове обслуговування")
 
 
