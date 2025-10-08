@@ -1,7 +1,7 @@
 import logging
 from yogaxbot.db import SessionLocal, User, WorkoutMessage, T, log_status_change
 from aiogram import Bot
-from aiogram.exceptions import TelegramForbiddenError
+from aiogram.exceptions import TelegramForbiddenError, TelegramBadRequest
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from datetime import datetime, timedelta
 from .common import is_admin
@@ -81,14 +81,23 @@ async def purge_workouts(bot: Bot):
         workouts = session.query(WorkoutMessage).filter_by(user_id=user.user_id).all()
         deleted_count = 0
         for wm in workouts:
+            deleted_ok = False
             try:
                 await bot.delete_message(chat_id=wm.chat_id, message_id=wm.message_id)
+                deleted_ok = True
                 deleted_count += 1
             except TelegramForbiddenError:
                 user.blocked = True
+            except TelegramBadRequest as e:
+                # Якщо повідомлення вже не існує — приберемо запис із БД
+                if 'message to delete not found' in str(e).lower():
+                    deleted_ok = True
+                else:
+                    logger.warning("purge_workouts: failed delete user_id=%s chat_id=%s msg_id=%s err=%s", user.user_id, wm.chat_id, wm.message_id, e)
             except Exception as e:
                 logger.warning("purge_workouts: failed delete user_id=%s chat_id=%s msg_id=%s err=%s", user.user_id, wm.chat_id, wm.message_id, e)
-            finally:
+
+            if deleted_ok:
                 session.delete(wm)
         if deleted_count or workouts:
             logger.info("purge_workouts: user_id=%s had=%s deleted=%s", user.user_id, len(workouts), deleted_count)
