@@ -115,6 +115,96 @@ def cmd_print_stats(args: argparse.Namespace) -> None:
         session.close()
 
 
+def _collect_admin_ids() -> list[int]:
+    ids: set[int] = set()
+    raw_many = os.getenv('ADMIN_USER_IDS', '')
+    raw_one = os.getenv('ADMIN_USER_ID', '')
+    for part in raw_many.split(',') if raw_many else []:
+        part = part.strip()
+        if part.isdigit():
+            ids.add(int(part))
+    if raw_one and raw_one.strip().isdigit():
+        ids.add(int(raw_one.strip()))
+    # Додатково: користувачі зі статусом 'admin'
+    session = SessionLocal()
+    try:
+        admins = session.query(User).filter(User.status == 'admin').all()
+        for u in admins:
+            try:
+                ids.add(int(u.user_id))
+            except Exception:
+                pass
+    finally:
+        session.close()
+    return sorted(ids)
+
+
+async def _send_admin_stats_async() -> None:
+    from sqlalchemy import func
+    bot = _get_bot()
+    session = SessionLocal()
+    try:
+        rows = session.query(User.status, func.count(User.user_id)).group_by(User.status).all()
+        total = session.query(User).count()
+    finally:
+        session.close()
+
+    lines = ["Статистика користувачів", f"Всього: {total}"]
+    for status, count in sorted(rows, key=lambda r: str(r[0])):
+        lines.append(f"{status}: {count}")
+    text = "\n".join(lines)
+
+    admin_ids = _collect_admin_ids()
+    if not admin_ids:
+        logger.warning("Немає admin user ids (ENV або User.status='admin')")
+    for uid in admin_ids:
+        try:
+            await bot.send_message(uid, text)
+        except Exception as e:
+            logger.warning("Не вдалося надіслати статистику адміну %s: %s", uid, e)
+    try:
+        await bot.session.close()
+    except Exception:
+        pass
+
+
+def cmd_send_admin_stats(args: argparse.Namespace) -> None:
+    load_dotenv()
+    asyncio.run(_send_admin_stats_async())
+
+
+def cmd_purge_only(args: argparse.Namespace) -> None:
+    load_dotenv()
+    async def _run():
+        bot = _get_bot()
+        logger.info("Запуск лише purge_workouts()")
+        try:
+            await purge_workouts(bot)
+        except Exception as e:
+            logger.warning("purge_workouts failed: %s", e)
+        try:
+            await bot.session.close()
+        except Exception:
+            pass
+    asyncio.run(_run())
+
+
+def cmd_cleanup_only(args: argparse.Namespace) -> None:
+    load_dotenv()
+    async def _run():
+        bot = _get_bot()
+        logger.info("Запуск лише cleanup_old_messages()")
+        try:
+            await cleanup_old_messages(bot)
+        except Exception as e:
+            logger.warning("cleanup_old_messages failed: %s", e)
+        try:
+            await bot.session.close()
+        except Exception:
+            pass
+    asyncio.run(_run())
+
+
 def main() -> None:
     load_dotenv()
 
@@ -131,6 +221,15 @@ def main() -> None:
 
     p_stats = sub.add_parser('print-stats', help='Вивести статистику користувачів за статусами')
     p_stats.set_defaults(func=cmd_print_stats)
+
+    p_send_stats = sub.add_parser('send-admin-stats', help='Надіслати статистику адміністратору(ам)')
+    p_send_stats.set_defaults(func=cmd_send_admin_stats)
+
+    p_purge = sub.add_parser('purge-only', help='Видалити тренувальні повідомлення (лише purge_workouts)')
+    p_purge.set_defaults(func=cmd_purge_only)
+
+    p_cleanup = sub.add_parser('cleanup-only', help='Очистити фінальні повідомлення після продовження (лише cleanup_old_messages)')
+    p_cleanup.set_defaults(func=cmd_cleanup_only)
 
     args = parser.parse_args()
     args.func(args)

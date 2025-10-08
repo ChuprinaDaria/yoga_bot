@@ -30,6 +30,14 @@ async def admin_broadcast_status_menu(callback: CallbackQuery, state):
         for status, count in result:
             stats[status] = count
 
+        # Динамічний підрахунок прострочених за датою, навіть якщо статус ще не оновився
+        now = datetime.utcnow()
+        expired_count = session.query(User).filter(
+            User.trial_expires_at != None,  # noqa: E711
+            User.trial_expires_at <= now
+        ).count()
+        stats['trial_expired'] = expired_count
+
         total = session.query(User).count()
 
         kb = InlineKeyboardMarkup(inline_keyboard=[

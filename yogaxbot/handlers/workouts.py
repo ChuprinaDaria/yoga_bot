@@ -105,6 +105,13 @@ async def workout_action_callback(callback: CallbackQuery, state, bot: Bot):
         result = session.query(User.status, func.count(User.user_id)).group_by(User.status).all()
         for status, count in result:
             stats[status] = count
+        # Динамічний підрахунок прострочених за датою
+        now = datetime.utcnow()
+        expired_count = session.query(User).filter(
+            User.trial_expires_at != None,  # noqa: E711
+            User.trial_expires_at <= now
+        ).count()
+        stats['trial_expired'] = expired_count
         total = session.query(User).count()
 
         kb = InlineKeyboardMarkup(inline_keyboard=[
