@@ -158,6 +158,20 @@ async def cmd_start(message: Message, bot: Bot, **data):
     except TelegramBadRequest:
         await bot.send_message(message.chat.id, '.', reply_markup=get_main_reply_keyboard())
    
+    # Якщо тріал завершився — не плануємо автозапуск і показуємо повідомлення
+    session_chk = SessionLocal()
+    try:
+        u = session_chk.query(User).get(user_id)
+        expired = bool(u and u.trial_expires_at and datetime.utcnow() >= u.trial_expires_at)
+        blocked_status = bool(u and getattr(u, 'status', '') in {'trial_expired', 'open', 'active'})
+    finally:
+        session_chk.close()
+
+    if expired or blocked_status:
+        kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text='Написати тренеру', url='https://t.me/seryogaji')]])
+        await bot.send_message(message.chat.id, await T('AFTER_EXPIRE'), reply_markup=kb, protect_content=True)
+        return
+
     if scheduler:
         run_at = datetime.now() + timedelta(minutes=1)
         logger.info("Scheduling run_start_open_course at %s for user_id=%s", run_at.isoformat(), user_id)
@@ -175,6 +189,19 @@ async def cmd_start(message: Message, bot: Bot, **data):
 @router.message(F.text == '🧘‍♀️ Безкоштовний курс')
 async def handle_free_course(message: Message, bot: Bot):
     user_id = message.from_user.id
+    session = SessionLocal()
+    try:
+        u = session.query(User).get(user_id)
+        expired = bool(u and u.trial_expires_at and datetime.utcnow() >= u.trial_expires_at)
+        blocked_status = bool(u and getattr(u, 'status', '') in {'trial_expired', 'open', 'active'})
+    finally:
+        session.close()
+
+    if expired or blocked_status:
+        kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text='Написати тренеру', url='https://t.me/seryogaji')]])
+        await message.answer(await T('AFTER_EXPIRE'), reply_markup=kb)
+        return
+
     await start_course_flow(user_id, message.chat.id, bot, forced=True)
 
 
@@ -201,6 +228,20 @@ async def handle_buy_subscription(message: Message):
 async def cb_start_first_workout(callback: CallbackQuery, bot: Bot):
     user_id = callback.from_user.id
     chat_id = callback.message.chat.id
+    session = SessionLocal()
+    try:
+        u = session.query(User).get(user_id)
+        expired = bool(u and u.trial_expires_at and datetime.utcnow() >= u.trial_expires_at)
+        blocked_status = bool(u and getattr(u, 'status', '') in {'trial_expired', 'open', 'active'})
+    finally:
+        session.close()
+
+    if expired or blocked_status:
+        kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text='Написати тренеру', url='https://t.me/seryogaji')]])
+        await callback.message.answer(await T('AFTER_EXPIRE'), reply_markup=kb)
+        await callback.answer()
+        return
+
     await start_course_flow(user_id, chat_id, bot, forced=True)
     await callback.answer()
 
