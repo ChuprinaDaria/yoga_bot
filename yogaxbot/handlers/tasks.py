@@ -75,15 +75,23 @@ async def trial_maintenance(bot: Bot):
 async def purge_workouts(bot: Bot):
     session = SessionLocal()
     now = datetime.utcnow()
-    users = session.query(User).filter(User.trial_expires_at != None, User.trial_expires_at <= now).all()
+    users = session.query(User).filter(User.trial_expires_at != None, User.trial_expires_at <= now).all()  # noqa: E711
+    logger.info("purge_workouts: candidates=%s", len(users))
     for user in users:
         workouts = session.query(WorkoutMessage).filter_by(user_id=user.user_id).all()
+        deleted_count = 0
         for wm in workouts:
             try:
                 await bot.delete_message(chat_id=wm.chat_id, message_id=wm.message_id)
-            except Exception:
-                pass
-            session.delete(wm)
+                deleted_count += 1
+            except TelegramForbiddenError:
+                user.blocked = True
+            except Exception as e:
+                logger.warning("purge_workouts: failed delete user_id=%s chat_id=%s msg_id=%s err=%s", user.user_id, wm.chat_id, wm.message_id, e)
+            finally:
+                session.delete(wm)
+        if deleted_count or workouts:
+            logger.info("purge_workouts: user_id=%s had=%s deleted=%s", user.user_id, len(workouts), deleted_count)
         session.commit()
     session.close()
 

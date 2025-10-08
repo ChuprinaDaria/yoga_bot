@@ -182,6 +182,7 @@ def cmd_purge_only(args: argparse.Namespace) -> None:
             await purge_workouts(bot)
         except Exception as e:
             logger.warning("purge_workouts failed: %s", e)
+        logger.info("purge_only: завершено")
         try:
             await bot.session.close()
         except Exception:
@@ -198,6 +199,7 @@ def cmd_cleanup_only(args: argparse.Namespace) -> None:
             await cleanup_old_messages(bot)
         except Exception as e:
             logger.warning("cleanup_old_messages failed: %s", e)
+        logger.info("cleanup_only: завершено")
         try:
             await bot.session.close()
         except Exception:
