@@ -95,6 +95,13 @@ async def admin_status_broadcast_text_msg(message: Message, state, bot: Bot):
     try:
         if target_status == 'all':
             users = session.query(User).all()
+        elif target_status == 'trial_expired':
+            # Користувачі з закінченим тріалом - перевіряємо за датою
+            now = datetime.utcnow()
+            users = session.query(User).filter(
+                User.trial_expires_at != None,  # noqa: E711
+                User.trial_expires_at <= now
+            ).all()
         else:
             users = session.query(User).filter(User.status == target_status).all()
 
@@ -155,6 +162,13 @@ async def admin_status_broadcast_photo_msg(message: Message, state, bot: Bot):
     try:
         if target_status == 'all':
             users = session.query(User).all()
+        elif target_status == 'trial_expired':
+            # Користувачі з закінченим тріалом - перевіряємо за датою
+            now = datetime.utcnow()
+            users = session.query(User).filter(
+                User.trial_expires_at != None,  # noqa: E711
+                User.trial_expires_at <= now
+            ).all()
         else:
             users = session.query(User).filter(User.status == target_status).all()
 

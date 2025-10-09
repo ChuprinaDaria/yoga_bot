@@ -224,11 +224,10 @@ async def handle_write_coach(message: Message):
 async def cb_start_first_workout(callback: CallbackQuery, bot: Bot):
     user_id = callback.from_user.id
     chat_id = callback.message.chat.id
+    
     # Відповідаємо на callback одразу, щоб уникнути "query is too old"
-    try:
-        await callback.answer()
-    except Exception:
-        pass
+    await callback.answer()
+    
     session = SessionLocal()
     try:
         u = session.query(User).get(user_id)
@@ -240,7 +239,6 @@ async def cb_start_first_workout(callback: CallbackQuery, bot: Bot):
     if expired or blocked_status:
         kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text='Написати тренеру', url='https://t.me/seryogaji')]])
         await callback.message.answer(await T('AFTER_EXPIRE'), reply_markup=kb)
-        await callback.answer()
         return
 
     await start_course_flow(user_id, chat_id, bot, forced=True)
