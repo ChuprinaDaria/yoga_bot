@@ -1,8 +1,10 @@
 import logging
-from db import SessionLocal, User, WorkoutMessage, T
+from yogaxbot.db import SessionLocal, User, WorkoutMessage, T, log_status_change
 from aiogram import Bot
+from aiogram.exceptions import TelegramForbiddenError, TelegramBadRequest
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from datetime import datetime
+from datetime import datetime, timedelta
+from .common import is_admin
 
 logger = logging.getLogger(__name__)
 
@@ -10,17 +12,62 @@ async def trial_maintenance(bot: Bot):
     session = SessionLocal()
     now = datetime.utcnow()
     users = session.query(User).filter(User.status == 'trial_active').all()
+
     for user in users:
         updated = False
-        if user.last_reminder_at and (now - user.last_reminder_at).days >= 3:
-            days_left = (user.trial_expires_at - now).days if user.trial_expires_at else 0
-            kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text='Чат школи йоги', url='https://t.me/yogaxchat')]])
-            await bot.send_message(chat_id=user.user_id, text=(await T('REMINDER_TPL', days_left=days_left)), reply_markup=kb, protect_content=True)
+
+        # Ініціалізація циклу нагадувань, якщо ще не встановлено
+        if user.status == 'trial_active' and not user.last_reminder_at:
             user.last_reminder_at = now
             updated = True
-        if user.trial_expires_at and now >= user.trial_expires_at:
+
+        # Нагадування кожні 3 дні
+        if user.last_reminder_at and (now - user.last_reminder_at).days >= 3:
+            days_left = (user.trial_expires_at - now).days if user.trial_expires_at else 0
+            if days_left > 0:
+                kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text='Написати у чат школи йоги', url='https://t.me/+xA1DOM00cc4zYmRi')]])
+                try:
+                    await bot.send_message(
+                        chat_id=user.user_id,
+                        text=await T('REMINDER_WITH_DAYS', days_left=days_left),
+                        reply_markup=kb,
+                        protect_content=True
+                    )
+                    user.last_reminder_at = now
+                    updated = True
+                except TelegramForbiddenError:
+                    # Користувач заблокував бота — позначимо та продовжимо
+                    user.blocked = True
+                    updated = True
+                except Exception as e:
+                    logger.warning("Failed to send reminder to user_id=%s: %s", user.user_id, e)
+
+        # Закінчення курсу
+        if user.trial_expires_at and now >= user.trial_expires_at and not user.course_feedback_given:
+            old_status = user.status
             user.status = 'trial_expired'
-            updated = True
+            log_status_change(user, old_status, 'trial_expired', 'course_expired')
+
+            kb = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text='Так вдалося 🙂', callback_data='course_feedback_yes')],
+                [InlineKeyboardButton(text='Ні, руки не дійшли 🙁', callback_data='course_feedback_no')]
+            ])
+
+            try:
+                msg = await bot.send_message(
+                    chat_id=user.user_id,
+                    text=await T('COURSE_FINISHED'),
+                    reply_markup=kb,
+                    protect_content=True
+                )
+                user.feedback_message_id = msg.message_id
+                updated = True
+            except TelegramForbiddenError:
+                user.blocked = True
+                updated = True
+            except Exception as e:
+                logger.warning("Failed to send course finished message to user_id=%s: %s", user.user_id, e)
+
         if updated:
             session.commit()
     session.close()
@@ -28,14 +75,64 @@ async def trial_maintenance(bot: Bot):
 async def purge_workouts(bot: Bot):
     session = SessionLocal()
     now = datetime.utcnow()
-    users = session.query(User).filter(User.trial_expires_at != None, User.trial_expires_at <= now).all()
+    users = session.query(User).filter(User.trial_expires_at != None, User.trial_expires_at <= now).all()  # noqa: E711
+    logger.info("purge_workouts: candidates=%s", len(users))
     for user in users:
         workouts = session.query(WorkoutMessage).filter_by(user_id=user.user_id).all()
+        deleted_count = 0
         for wm in workouts:
+            deleted_ok = False
             try:
                 await bot.delete_message(chat_id=wm.chat_id, message_id=wm.message_id)
-            except Exception:
-                pass
-            session.delete(wm)
+                deleted_ok = True
+                deleted_count += 1
+            except TelegramForbiddenError:
+                user.blocked = True
+            except TelegramBadRequest as e:
+                # Якщо повідомлення вже не існує — приберемо запис із БД
+                if 'message to delete not found' in str(e).lower():
+                    deleted_ok = True
+                else:
+                    logger.warning("purge_workouts: failed delete user_id=%s chat_id=%s msg_id=%s err=%s", user.user_id, wm.chat_id, wm.message_id, e)
+            except Exception as e:
+                logger.warning("purge_workouts: failed delete user_id=%s chat_id=%s msg_id=%s err=%s", user.user_id, wm.chat_id, wm.message_id, e)
+
+            if deleted_ok:
+                session.delete(wm)
+        if deleted_count or workouts:
+            logger.info("purge_workouts: user_id=%s had=%s deleted=%s", user.user_id, len(workouts), deleted_count)
         session.commit()
+    session.close()
+
+
+# Додати нову функцію для видалення старих повідомлень
+async def cleanup_old_messages(bot: Bot):
+    session = SessionLocal()
+    now = datetime.utcnow()
+
+    users = session.query(User).filter(
+        User.course_extension_used == True,
+        User.feedback_message_id != None
+    ).all()
+
+    for user in users:
+        if user.trial_expires_at and now >= user.trial_expires_at + timedelta(hours=24):
+            try:
+                if user.feedback_message_id:
+                    await bot.delete_message(user.user_id, user.feedback_message_id)
+
+                kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text='Написати тренеру', url='https://t.me/seryogaji')]])
+
+                await bot.send_message(
+                    user.user_id,
+                    await T('FINAL_COURSE_END'),
+                    reply_markup=kb,
+                    protect_content=True
+                )
+
+                user.feedback_message_id = None
+                session.commit()
+            except Exception as e:
+                logger.error(f"Failed to cleanup for user {user.user_id}: {e}")
+
     session.close()

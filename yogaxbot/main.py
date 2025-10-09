@@ -12,9 +12,9 @@ from aiogram import Bot, Dispatcher
 from aiogram.enums import ParseMode
 from aiogram.client.default import DefaultBotProperties
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from handlers import router
-from handlers.tasks import trial_maintenance, purge_workouts
-from db import seed_free_workouts_if_empty
+from yogaxbot.handlers import router
+from yogaxbot.handlers.tasks import trial_maintenance, purge_workouts, cleanup_old_messages
+from yogaxbot.db import seed_free_workouts_if_empty, ensure_welcome_seeded
 
 load_dotenv()
 
@@ -32,12 +32,14 @@ async def main():
     dp = Dispatcher()
     dp.include_router(router)
 
-    scheduler = AsyncIOScheduler()
+    scheduler = AsyncIOScheduler(timezone='Europe/Warsaw')
     scheduler.start()
     scheduler.add_job(trial_maintenance, 'interval', days=1, args=[bot])
     scheduler.add_job(purge_workouts, 'interval', minutes=10, args=[bot])
+    scheduler.add_job(cleanup_old_messages, 'interval', hours=1, args=[bot])
 
     seed_free_workouts_if_empty()
+    ensure_welcome_seeded()
 
     async def scheduler_middleware(handler, event, data):
         data['scheduler'] = scheduler
