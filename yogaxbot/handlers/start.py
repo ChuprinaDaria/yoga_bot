@@ -219,15 +219,16 @@ async def handle_write_coach(message: Message):
     kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text='Написати тренеру', url='https://t.me/seryogaji')]])
     await message.answer('Напишіть тренеру, щоб підібрати персональну програму:', reply_markup=kb)
 
-@router.message(F.text == 'Купити абонемент')
-async def handle_buy_subscription(message: Message):
-    # Поки що ставимо "заглушку" посилання
-    kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text='Оформити абонемент', url='https://example.com/subscription')]])
-    await message.answer('Оберіть тариф та оформіть абонемент:', reply_markup=kb)
+# Видалено хендлер "Купити абонемент" — замість цього пропонуємо писати тренеру
 @router.callback_query(F.data == 'start_first_workout')
 async def cb_start_first_workout(callback: CallbackQuery, bot: Bot):
     user_id = callback.from_user.id
     chat_id = callback.message.chat.id
+    # Відповідаємо на callback одразу, щоб уникнути "query is too old"
+    try:
+        await callback.answer()
+    except Exception:
+        pass
     session = SessionLocal()
     try:
         u = session.query(User).get(user_id)
@@ -243,5 +244,4 @@ async def cb_start_first_workout(callback: CallbackQuery, bot: Bot):
         return
 
     await start_course_flow(user_id, chat_id, bot, forced=True)
-    await callback.answer()
 

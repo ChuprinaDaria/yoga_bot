@@ -22,12 +22,10 @@ async def course_feedback_positive(callback: CallbackQuery, bot):
             log_status_change(user, old_status, 'open', 'positive_course_feedback')
             session.commit()
 
-            kb = InlineKeyboardMarkup(inline_keyboard=[[
-                InlineKeyboardButton(
-                    text='Отримати знижку на перший абонемент',
-                    url='https://t.me/m/JHM2HLOFZDky'
-                )
-            ]])
+            kb = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text='Спробувати ще 1 день', callback_data='try_one_more_day')],
+                [InlineKeyboardButton(text='Написати тренеру', url='https://t.me/seryogaji')]
+            ])
 
             await callback.message.edit_text(await T('FEEDBACK_POSITIVE'), reply_markup=kb)
     finally:
@@ -45,9 +43,10 @@ async def course_feedback_negative(callback: CallbackQuery, bot):
             user.course_feedback_given = True
             session.commit()
 
-            kb = InlineKeyboardMarkup(inline_keyboard=[[
-                InlineKeyboardButton(text='Спробувати ще 1 день', callback_data='try_one_more_day')
-            ]])
+            kb = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text='Спробувати ще 1 день', callback_data='try_one_more_day')],
+                [InlineKeyboardButton(text='Написати тренеру', url='https://t.me/seryogaji')]
+            ])
 
             await callback.message.edit_text(await T('FEEDBACK_NEGATIVE'), reply_markup=kb)
     finally:
